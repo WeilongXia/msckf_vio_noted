@@ -132,7 +132,7 @@ class ImageProcessor
 
     /*
      * @brief createRosIO
-     *    Create ros publisher and subscirbers.
+     *    Create ros publisher and subscribers.
      */
     bool createRosIO();
 
@@ -161,7 +161,7 @@ class ImageProcessor
 
     /*
      * @brief trackFeatures
-     *    Tracker features on the newly received stereo images.
+     *    Track features on the newly received stereo images.
      */
     void trackFeatures();
 

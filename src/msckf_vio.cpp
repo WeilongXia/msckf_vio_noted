@@ -171,7 +171,7 @@ bool MsckfVio::createRosIO()
     imu_sub = nh.subscribe("/camera/imu", 100, &MsckfVio::imuCallback, this);
     feature_sub = nh.subscribe("features", 40, &MsckfVio::featureCallback, this);
 
-    mocap_odom_sub = nh.subscribe("mocap_odom", 10, &MsckfVio::mocapOdomCallback, this);
+    mocap_odom_sub = nh.subscribe("/mavros/vision_pose/pose", 10, &MsckfVio::mocapOdomCallback, this);
     mocap_odom_pub = nh.advertise<nav_msgs::Odometry>("gt_odom", 1);
 
     return true;
@@ -408,7 +408,7 @@ void MsckfVio::mocapOdomCallback(const nav_msgs::OdometryConstPtr &msg)
 {
     static bool first_mocap_odom_msg = true;
 
-    // If this is the first mocap odometry messsage, set
+    // If this is the first mocap odometry message, set
     // the initial frame.
     if (first_mocap_odom_msg)
     {

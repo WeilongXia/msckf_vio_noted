@@ -21,7 +21,7 @@
       <rosparam command="load" file="$(arg calibration_file)"/>
 
       <param name="publish_tf" value="true"/>
-      <param name="frame_rate" value="30"/>
+      <param name="frame_rate" value="15"/>
       <param name="fixed_frame_id" value="$(arg fixed_frame_id)"/>
       <param name="child_frame_id" value="odom"/>
       <param name="max_cam_state_size" value="20"/>
@@ -35,11 +35,16 @@
       <param name="feature/config/translation_threshold" value="-1.0"/>
 
       <!-- These values should be standard deviation -->
-      <param name="noise/gyro" value="1.4931064314910106e-02"/>
+      <!-- <param name="noise/gyro" value="1.4931064314910106e-02"/>
       <param name="noise/acc" value="1.9370095667026372e-01"/>
       <param name="noise/gyro_bias" value="1.3943568569161103e-04"/>
       <param name="noise/acc_bias" value="4.4709078460458538e-03"/>
-      <param name="noise/feature" value="0.03"/>
+      <param name="noise/feature" value="0.03"/> -->
+      <param name="noise/gyro" value="0.6"/>
+      <param name="noise/acc" value="1.7"/>
+      <param name="noise/gyro_bias" value="0.02"/>
+      <param name="noise/acc_bias" value="0.04"/>
+      <param name="noise/feature" value="0.1"/>
 
       <param name="initial_state/velocity/x" value="0.0"/>
       <param name="initial_state/velocity/y" value="0.0"/>
