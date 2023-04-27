@@ -22,6 +22,10 @@
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/Imu.h>
 
+// #include <opencv2/cudaarithm.hpp>
+// #include <opencv2/cudaimgproc.hpp>
+// #include <opencv2/cudaoptflow.hpp>
+
 namespace msckf_vio
 {
 
@@ -306,6 +310,7 @@ class ImageProcessor
     // Feature detector
     ProcessorConfig processor_config;
     cv::Ptr<cv::Feature2D> detector_ptr;
+    // cv::Ptr<cv::cuda::CornersDetector> gpu_detector_ptr;
 
     // IMU message buffer.
     std::vector<sensor_msgs::Imu> imu_msg_buffer;
@@ -337,6 +342,9 @@ class ImageProcessor
     std::vector<cv::Mat> prev_cam0_pyramid_;
     std::vector<cv::Mat> curr_cam0_pyramid_;
     std::vector<cv::Mat> curr_cam1_pyramid_;
+    // Gpu version
+    // std::vector<cv::cuda::GpuMat> curr_cam0_pyramid_gpu_;
+    // std::vector<cv::cuda::GpuMat> curr_cam1_pyramid_gpu_;
 
     // Features in the previous and current image.
     boost::shared_ptr<GridFeatures> prev_features_ptr;
@@ -364,6 +372,12 @@ class ImageProcessor
     std::map<FeatureIDType, int> feature_lifetime;
     void updateFeatureLifetime();
     void featureLifetimeStatistics();
+
+    // If use cuda to accelerate front-end
+    bool use_gpu;
+
+    // If draw features on the image for debugging
+    bool if_debug_image;
 };
 
 typedef ImageProcessor::Ptr ImageProcessorPtr;

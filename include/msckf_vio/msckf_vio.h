@@ -12,11 +12,13 @@
 #include <Eigen/Geometry>
 #include <boost/shared_ptr.hpp>
 #include <map>
+#include <mutex>
 #include <set>
 #include <string>
 #include <vector>
 
 #include <nav_msgs/Odometry.h>
+#include <nav_msgs/Path.h>
 #include <ros/ros.h>
 #include <sensor_msgs/Imu.h>
 #include <std_srvs/Trigger.h>
@@ -202,6 +204,8 @@ class MsckfVio
     ros::Publisher feature_pub;
     tf::TransformBroadcaster tf_pub;
     ros::ServiceServer reset_srv;
+    ros::Publisher vio_path_pub;
+    ros::Publisher mocap_path_pub;
 
     // Frame id
     std::string fixed_frame_id;
@@ -216,12 +220,43 @@ class MsckfVio
     double frame_rate;
 
     // Debugging variables and functions
-    void mocapOdomCallback(const nav_msgs::OdometryConstPtr &msg);
+    void mocapPoseCallback(const geometry_msgs::PoseStampedConstPtr &msg);
 
-    ros::Subscriber mocap_odom_sub;
-    ros::Publisher mocap_odom_pub;
-    geometry_msgs::TransformStamped raw_mocap_odom_msg;
+    // If use processMocapData() to fuse motion capture data
+    bool if_fuse_mocap;
+
+    // If use the Realsense D435i camera
+    // It's body frame is the internal IMU frame, which is weird
+    // It's initial acceleration value is [0, -9.8, 0], and it's frame is LUF
+    bool if_use_d435i;
+
+    // Motion capture in hitcsc has 60hz frequency, reduce it to 10hz
+    bool if_use_lab_mocap;
+
+    // Fusing motion capture data to ensure global consistency
+    void processMocapData(const geometry_msgs::PoseStamped &msg);
+
+    // bool updateState(const Eigen::VectorXd &delta_x);
+    // void updateStateCov(const Eigen::MatrixXd &K, const Eigen::MatrixXd &H, const Eigen::MatrixXd &R);
+
+    std::mutex m_vio_update;
+    std::mutex m_mocap_update;
+
+    nav_msgs::Path mocap_path;
+    nav_msgs::Path vio_path;
+
+    ros::Subscriber mocap_pose_sub;
+    ros::Publisher mocap_pose_pub;
+    geometry_msgs::PoseStamped raw_mocap_pose_msg;
     Eigen::Isometry3d mocap_initial_frame;
+    Eigen::Isometry3d T_b1_b2;
+
+    // Motion capture measurement noise
+    double mocap_pos_noise;
+    double mocap_rot_noise;
+
+    std::string msckf_result_path;
+    std::string mocap_result_path;
 };
 
 typedef MsckfVio::Ptr MsckfVioPtr;

@@ -3,6 +3,8 @@
   <arg name="robot" default="d435i"/>
   <arg name="calibration_file"
     default="$(find msckf_vio)/config/d435i_camchain_imucam.yaml"/>
+  <!-- <arg name="calibration_file"
+    default="$(find msckf_vio)/config/d435i_flycontrol_imucam.yaml"/> -->
 
   <!-- Image Processor Nodelet  -->
   <group ns="$(arg robot)">
@@ -26,6 +28,10 @@
       <remap from="~imu" to="/camera/imu"/>
       <remap from="~cam0_image" to="/camera/infra1/image_rect_raw"/>
       <remap from="~cam1_image" to="/camera/infra2/image_rect_raw"/>
+
+      <!-- do not use gpu currently -->
+      <param name="use_gpu" value="false"/>
+      <param name="if_debug_image" value="false"/>
 
     </node>
   </group>
