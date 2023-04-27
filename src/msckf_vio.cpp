@@ -537,6 +537,16 @@ void MsckfVio::mocapPoseCallback(const geometry_msgs::PoseStampedConstPtr &msg)
         tf::transformEigenToTF(T_b_w_gt_pub, T_b_w_gt_tf);
         tf_pub.sendTransform(
             tf::StampedTransform(T_b_w_gt_tf, msg->header.stamp, fixed_frame_id, child_frame_id + "_mocap"));
+    
+        // Visulize mocap path
+        geometry_msgs::PoseStamped mocap_pose_msg_pub;
+        mocap_pose_msg_pub.header.stamp = ros::Time::now();
+        mocap_pose_msg_pub.header.frame_id = fixed_frame_id;
+        tf::poseEigenToMsg(T_b_w_gt_pub, mocap_pose_msg_pub.pose);
+        mocap_path.header.stamp = ros::Time::now();
+        mocap_path.header.frame_id = fixed_frame_id;
+        mocap_path.poses.push_back(mocap_pose_msg_pub);
+        mocap_path_pub.publish(mocap_path);
     }
     // Ground truth odometry.
     geometry_msgs::PoseStamped mocap_pose_msg;
@@ -547,12 +557,6 @@ void MsckfVio::mocapPoseCallback(const geometry_msgs::PoseStampedConstPtr &msg)
     tf::poseEigenToMsg(T_b_w_gt, mocap_pose_msg.pose);
     // tf::vectorEigenToMsg(body_velocity_gt,
     //    mocap_odom_msg.twist.twist.linear);
-
-    // Visulize mocap path
-    mocap_path.header.stamp = ros::Time::now();
-    mocap_path.header.frame_id = fixed_frame_id;
-    mocap_path.poses.push_back(mocap_pose_msg);
-    mocap_path_pub.publish(mocap_path);
 
     ofstream foutC(mocap_result_path, ios::app);
     foutC.setf(ios::fixed, ios::floatfield);
@@ -1632,14 +1636,6 @@ void MsckfVio::publish(const ros::Time &time)
           << imu_state.orientation[3] << std::endl;
     foutC.close();
 
-    // Visulize vio path
-    geometry_msgs::PoseStamped pose_msg;
-    vio_path.header.stamp = time;
-    vio_path.header.frame_id = fixed_frame_id;
-    tf::poseEigenToMsg(T_i_w, pose_msg.pose);
-    vio_path.poses.push_back(pose_msg);
-    vio_path_pub.publish(vio_path);
-
     Eigen::Isometry3d T_b_w = IMUState::T_imu_body * T_i_w * IMUState::T_imu_body.inverse();
     Eigen::Vector3d body_velocity = IMUState::T_imu_body.linear() * imu_state.velocity;
 
@@ -1652,6 +1648,16 @@ void MsckfVio::publish(const ros::Time &time)
         T_b_w_pub = mocap_initial_frame.inverse() * T_b_w * T_b1_b2;
         tf::transformEigenToTF(T_b_w_pub, T_b_w_tf);
         tf_pub.sendTransform(tf::StampedTransform(T_b_w_tf, time, fixed_frame_id, child_frame_id));
+
+        // Visulize vio path
+        geometry_msgs::PoseStamped vio_pose_msg_pub;
+        vio_pose_msg_pub.header.stamp = ros::Time::now();
+        vio_pose_msg_pub.header.frame_id = fixed_frame_id;
+        tf::poseEigenToMsg(T_b_w_pub, vio_pose_msg_pub.pose);
+        vio_path.header.stamp = ros::Time::now();
+        vio_path.header.frame_id = fixed_frame_id;
+        vio_path.poses.push_back(vio_pose_msg_pub);
+        vio_path_pub.publish(vio_path);
     }
 
     // Publish the odometry
