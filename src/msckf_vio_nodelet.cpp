@@ -7,18 +7,19 @@
 
 #include <msckf_vio/msckf_vio_nodelet.h>
 
-namespace msckf_vio {
-void MsckfVioNodelet::onInit() {
-  msckf_vio_ptr.reset(new MsckfVio(getPrivateNodeHandle()));
-  if (!msckf_vio_ptr->initialize()) {
-    ROS_ERROR("Cannot initialize MSCKF VIO...");
+namespace msckf_vio
+{
+void MsckfVioNodelet::onInit()
+{
+    msckf_vio_ptr.reset(new MsckfVio(getPrivateNodeHandle()));
+    if (!msckf_vio_ptr->initialize())
+    {
+        ROS_ERROR("Cannot initialize MSCKF VIO...");
+        return;
+    }
     return;
-  }
-  return;
 }
 
-PLUGINLIB_EXPORT_CLASS(msckf_vio::MsckfVioNodelet,
-    nodelet::Nodelet);
+PLUGINLIB_EXPORT_CLASS(msckf_vio::MsckfVioNodelet, nodelet::Nodelet);
 
 } // end namespace msckf_vio
-

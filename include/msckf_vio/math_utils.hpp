@@ -47,6 +47,19 @@ inline void quaternionNormalize(Eigen::Vector4d &q)
 }
 
 /*
+ * @brief The conjugate of q
+ */
+inline Eigen::Vector4d conjugateQ(const Eigen::Vector4d &q)
+{
+    Eigen::Vector4d conj_q;
+    conj_q[0] = -q[0];
+    conj_q[1] = -q[1];
+    conj_q[2] = -q[2];
+    conj_q[3] = q[3];
+
+    return conj_q;
+}
+/*
  * @brief Perform q1 * q2
  */
 inline Eigen::Vector4d quaternionMultiplication(const Eigen::Vector4d &q1, const Eigen::Vector4d &q2)

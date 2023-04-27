@@ -110,6 +110,9 @@ bool ImageProcessor::loadParameters()
     nh.param<double>("ransac_threshold", processor_config.ransac_threshold, 3);
     nh.param<double>("stereo_threshold", processor_config.stereo_threshold, 3);
 
+    nh.param<bool>("use_gpu", use_gpu, false);
+    nh.param<bool>("if_debug_image", if_debug_image, false);
+
     ROS_INFO("===========================================");
     ROS_INFO("cam0_resolution: %d, %d", cam0_resolution[0], cam0_resolution[1]);
     ROS_INFO("cam0_intrinscs: %f, %f, %f, %f", cam0_intrinsics[0], cam0_intrinsics[1], cam0_intrinsics[2],
@@ -155,6 +158,7 @@ bool ImageProcessor::createRosIO()
     stereo_sub.connectInput(cam0_img_sub, cam1_img_sub);
     stereo_sub.registerCallback(&ImageProcessor::stereoCallback, this);
     imu_sub = nh.subscribe("/camera/imu", 50, &ImageProcessor::imuCallback, this);
+    // imu_sub = nh.subscribe("/mavros/imu/data", 50, &ImageProcessor::imuCallback, this);
 
     return true;
 }
@@ -199,7 +203,10 @@ void ImageProcessor::stereoCallback(const sensor_msgs::ImageConstPtr &cam0_img,
 
         // Draw results.
         start_time = ros::Time::now();
-        drawFeaturesStereo();
+        if (if_debug_image)
+        {
+            drawFeaturesStereo();
+        }
         // ROS_INFO("Draw features: %f",
         //    (ros::Time::now()-start_time).toSec());
     }
@@ -225,7 +232,11 @@ void ImageProcessor::stereoCallback(const sensor_msgs::ImageConstPtr &cam0_img,
 
         // Draw results.
         start_time = ros::Time::now();
-        drawFeaturesStereo();
+        if (if_debug_image)
+        {
+            drawFeaturesStereo();
+        }
+
         // ROS_INFO("Draw features: %f",
         //    (ros::Time::now()-start_time).toSec());
     }
@@ -267,6 +278,24 @@ void ImageProcessor::imuCallback(const sensor_msgs::ImuConstPtr &msg)
 
 void ImageProcessor::createImagePyramids()
 {
+    // if (use_gpu)
+    // {
+    //     const Mat &curr_cam0_img = cam0_curr_img_ptr->image;
+    //     cuda::GpuMat curr_cam0_img_gpu(curr_cam0_img);
+    //     cuda::buildOpticalFlowPyramid(
+    //         curr_cam0_img_gpu, curr_cam0_pyramid_gpu_, Size(processor_config.patch_size,
+    //         processor_config.patch_size), processor_config.pyramid_levels, true, BORDER_REFLECT_101, BORDER_CONSTANT,
+    //         false);
+
+    //     const Mat &curr_cam1_img = cam1_curr_img_ptr->image;
+    //     cuda::GpuMat curr_cam1_img_gpu(curr_cam1_img);
+    //     cuda::buildOpticalFlowPyramid(
+    //         curr_cam1_img_gpu, curr_cam1_pyramid_gpu_, Size(processor_config.patch_size,
+    //         processor_config.patch_size), processor_config.pyramid_levels, true, BORDER_REFLECT_101, BORDER_CONSTANT,
+    //         false);
+    // }
+    // else
+    // {
     const Mat &curr_cam0_img = cam0_curr_img_ptr->image;
     buildOpticalFlowPyramid(curr_cam0_img, curr_cam0_pyramid_,
                             Size(processor_config.patch_size, processor_config.patch_size),
@@ -276,12 +305,24 @@ void ImageProcessor::createImagePyramids()
     buildOpticalFlowPyramid(curr_cam1_img, curr_cam1_pyramid_,
                             Size(processor_config.patch_size, processor_config.patch_size),
                             processor_config.pyramid_levels, true, BORDER_REFLECT_101, BORDER_CONSTANT, false);
+    // }
 }
 
 void ImageProcessor::initializeFirstFrame()
 {
-    // Size of each grid.
     const Mat &img = cam0_curr_img_ptr->image;
+    // if (use_gpu)
+    // {
+    //     cv::cuda::GpuMat gpu_img(cam0_curr_img_ptr->image);
+    //     gpu_detector_ptr = cv::cuda::createGoodFeaturesToTrackDetector(
+    //         gpu_img.type(),
+    //         processor_config.grid_row * processor_config.grid_col * processor_config.grid_min_feature_num, 0.01);
+    // }
+    // else
+    // {
+    // }
+
+    // Size of each grid.
     static int grid_height = img.rows / processor_config.grid_row;
     static int grid_width = img.cols / processor_config.grid_col;
 
