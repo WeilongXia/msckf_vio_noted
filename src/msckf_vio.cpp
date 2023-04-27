@@ -531,7 +531,10 @@ void MsckfVio::mocapPoseCallback(const geometry_msgs::PoseStampedConstPtr &msg)
     if (publish_tf)
     {
         tf::Transform T_b_w_gt_tf;
-        tf::transformEigenToTF(T_b_w_gt, T_b_w_gt_tf);
+        // 发布出来的mocap位姿，在mocap坐标系下
+        Eigen::Isometry3d T_b_w_gt_pub;
+        T_b_w_gt_pub = mocap_initial_frame.inverse() * T_b_w_gt * T_b1_b2;
+        tf::transformEigenToTF(T_b_w_gt_pub, T_b_w_gt_tf);
         tf_pub.sendTransform(
             tf::StampedTransform(T_b_w_gt_tf, msg->header.stamp, fixed_frame_id, child_frame_id + "_mocap"));
     }
@@ -1644,7 +1647,10 @@ void MsckfVio::publish(const ros::Time &time)
     if (publish_tf)
     {
         tf::Transform T_b_w_tf;
-        tf::transformEigenToTF(T_b_w, T_b_w_tf);
+        // 发布的body2坐标系在mocap系下的位姿
+        Eigen::Isometry3d T_b_w_pub;
+        T_b_w_pub = mocap_initial_frame.inverse() * T_b_w * T_b1_b2;
+        tf::transformEigenToTF(T_b_w_pub, T_b_w_tf);
         tf_pub.sendTransform(tf::StampedTransform(T_b_w_tf, time, fixed_frame_id, child_frame_id));
     }
 
