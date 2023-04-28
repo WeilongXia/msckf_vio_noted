@@ -258,8 +258,8 @@ void ImageProcessor::stereoCallback(const sensor_msgs::ImageConstPtr &cam0_img,
     prev_features_ptr = curr_features_ptr;
 #ifndef USE_GPU
     std::swap(prev_cam0_pyramid_, curr_cam0_pyramid_);
-#else
-    std::swap(prev_cam0_pyramid_gpu_, curr_cam0_pyramid_gpu_);
+// #else
+//     std::swap(prev_cam0_pyramid_gpu_, curr_cam0_pyramid_gpu_);
 #endif
 
     // Initialize the current features to empty vectors.
@@ -293,20 +293,22 @@ void ImageProcessor::createImagePyramids()
     buildOpticalFlowPyramid(curr_cam1_img, curr_cam1_pyramid_,
                             Size(processor_config.patch_size, processor_config.patch_size),
                             processor_config.pyramid_levels, true, BORDER_REFLECT_101, BORDER_CONSTANT, false);
-#else
-    const Mat &curr_cam0_img = cam0_curr_img_ptr->image;
-    // Upload the image to GPU memory
-    cuda::GpuMat curr_cam0_img_gpu(curr_cam0_img);
-    // Build the pyramid on GPU
-    cuda::buildOpticalFlowPyramid(curr_cam0_img_gpu, curr_cam0_pyramid_gpu_,
-                                  Size(processor_config.patch_size, processor_config.patch_size),
-                                  processor_config.pyramid_levels, true, BORDER_REFLECT_101, BORDER_CONSTANT, false);
+// #else
+//     const Mat &curr_cam0_img = cam0_curr_img_ptr->image;
+//     // Upload the image to GPU memory
+//     cuda::GpuMat curr_cam0_img_gpu(curr_cam0_img);
+//     // Build the pyramid on GPU
+//     cuda::buildOpticalFlowPyramid(curr_cam0_img_gpu, curr_cam0_pyramid_gpu_,
+//                                   Size(processor_config.patch_size, processor_config.patch_size),
+//                                   processor_config.pyramid_levels, true, BORDER_REFLECT_101, BORDER_CONSTANT,
+//                                   false);
 
-    const Mat &curr_cam1_img = cam1_curr_img_ptr->image;
-    cuda::GpuMat curr_cam1_img_gpu(curr_cam1_img);
-    cuda::buildOpticalFlowPyramid(curr_cam1_img_gpu, curr_cam1_pyramid_gpu_,
-                                  Size(processor_config.patch_size, processor_config.patch_size),
-                                  processor_config.pyramid_levels, true, BORDER_REFLECT_101, BORDER_CONSTANT, false);
+//     const Mat &curr_cam1_img = cam1_curr_img_ptr->image;
+//     cuda::GpuMat curr_cam1_img_gpu(curr_cam1_img);
+//     cuda::buildOpticalFlowPyramid(curr_cam1_img_gpu, curr_cam1_pyramid_gpu_,
+//                                   Size(processor_config.patch_size, processor_config.patch_size),
+//                                   processor_config.pyramid_levels, true, BORDER_REFLECT_101, BORDER_CONSTANT,
+//                                   false);
 #endif
 }
 
@@ -323,12 +325,8 @@ void ImageProcessor::initializeFirstFrame()
     const cv::cuda::GpuMat img_gpu(img);
 
     // Detect features using the CUDA FAST detector
-    cv::cuda::GpuMat new_features_gpu;
-    detector_ptr->detect(img_gpu, new_features_gpu);
-
-    // Download the detected keypoints
     vector<KeyPoint> new_features(0);
-    detector_ptr->convert(new_features_gpu, new_features);
+    detector_ptr->detect(img_gpu, new_features);
 #endif
 
     // Size of each grid.
@@ -487,17 +485,22 @@ void ImageProcessor::trackFeatures()
         processor_config.max_iteration, processor_config.track_precision);
 
     // Upload detected keypoints to the GPU
-    cv::cuda::GpuMat prev_cam0_points_gpu, curr_cam0_points_gpu, track_inliers_gpu;
-    prev_cam0_points_gpu.upload(Mat(prev_cam0_points).reshape(1, static_cast<int>(prev_cam0_points.size())));
-    curr_cam0_points_gpu.upload(Mat(curr_cam0_points).reshape(1, static_cast<int>(curr_cam0_points.size())));
+    cv::cuda::GpuMat prev_cam0_points_gpu(prev_cam0_points);
+    cv::cuda::GpuMat curr_cam0_points_gpu(curr_cam0_points);
+    cv::cuda::GpuMat prev_img_gpu(cam0_prev_img_ptr->image);
+    cv::cuda::GpuMat curr_img_gpu(cam0_curr_img_ptr->image);
+    cv::cuda::GpuMat track_inliers_gpu;
 
     // Calculate optical flow on the GPU
-    pyrLK_gpu->calc(prev_cam0_pyramid_gpu_, curr_cam0_pyramid_gpu_, prev_cam0_points_gpu, curr_cam0_points_gpu,
-                    track_inliers_gpu);
+    pyrLK_gpu->calc(prev_img_gpu, curr_img_gpu, prev_cam0_points_gpu, curr_cam0_points_gpu, track_inliers_gpu);
 
     // Download the results from the GPU
-    curr_cam0_points_gpu.download(Mat(curr_cam0_points).reshape(1, static_cast<int>(curr_cam0_points.size())));
-    track_inliers_gpu.download(Mat(track_inliers).reshape(1, static_cast<int>(track_inliers_gpu.size())));
+    vector<cv::Point2f> tmp_curr_cam0_pts(curr_cam0_points_gpu.cols);
+    curr_cam0_points_gpu.download(tmp_curr_cam0_pts);
+    curr_cam0_points = tmp_curr_cam0_pts;
+    vector<unsigned char> tmp_status(track_inliers_gpu.cols);
+    track_inliers_gpu.download(tmp_status);
+    track_inliers = tmp_status;
     ROS_INFO("trackFeature calcOpticalFlow time(GPU) : % f ", (ros::Time::now() - start_time).toSec());
 #endif
 
@@ -659,16 +662,29 @@ void ImageProcessor::stereoMatch(const vector<cv::Point2f> &cam0_points, vector<
         processor_config.max_iteration, processor_config.track_precision);
 
     // Upload detected keypoints to the GPU
-    cv::cuda::GpuMat cam0_points_gpu, cam1_points_gpu, inlier_markers_gpu;
-    cam0_points_gpu.upload(Mat(cam0_points).reshape(1, static_cast<int>(cam0_points.size())));
-    cam1_points_gpu.upload(Mat(cam1_points).reshape(1, static_cast<int>(cam1_points.size())));
+    cv::cuda::GpuMat cam0_points_gpu(cam0_points);
+    cv::cuda::GpuMat cam1_points_gpu(cam1_points);
+    cv::cuda::GpuMat cam0_img_gpu(cam0_curr_img_ptr->image);
+    cv::cuda::GpuMat cam1_img_gpu(cam1_curr_img_ptr->image);
+    cv::cuda::GpuMat inlier_markers_gpu;
 
     // Calculate optical flow on the GPU
-    pyrLK_gpu->calc(curr_cam0_pyramid_, curr_cam1_pyramid_, cam0_points_gpu, cam1_points_gpu, inlier_markers_gpu);
+    pyrLK_gpu->calc(cam0_img_gpu, cam1_img_gpu, cam0_points_gpu, cam1_points_gpu, inlier_markers_gpu);
+
+    vector<cv::Point2f> tmp_curr_cam0_pts(curr_cam0_points_gpu.cols);
+    curr_cam0_points_gpu.download(tmp_curr_cam0_pts);
+    curr_cam0_points = tmp_curr_cam0_pts;
+    vector<unsigned char> tmp_status(track_inliers_gpu.cols);
+    track_inliers_gpu.download(tmp_status);
+    track_inliers = tmp_status;
 
     // Download the results from the GPU
-    cam1_points_gpu.download(Mat(cam1_points).reshape(1, static_cast<int>(cam1_points.size())));
-    inlier_markers_gpu.download(Mat(inlier_markers).reshape(1, static_cast<int>(inlier_markers_gpu.size())));
+    vector<cv::Point2f> tmp_cam1_pts(cam1_points_gpu.cols);
+    cam1_points_gpu.download(tmp_cam1_pts);
+    cam1_points = tmp_cam1_pts;
+    vector<unsigned char> tmp_status(inlier_markers_gpu.cols);
+    inlier_markers_gpu.download(tmp_status);
+    inlier_markers = tmp_status;
 
     ROS_INFO("stereoMatch calcOpticalFlow time(GPU): %f", (ros::Time::now() - start_time).toSec());
 #endif
@@ -760,15 +776,11 @@ void ImageProcessor::addNewFeatures()
     ros::Time start_time = ros::Time::now();
     // Upload the input image and mask to the GPU
     cv::cuda::GpuMat curr_img_gpu(curr_img);
-    cv::cuda::GpuMat mask_gpu(mask);
+    // cv::cuda::GpuMat mask_gpu(mask);
 
     // Detect features using the CUDA FAST detector
-    cv::cuda::GpuMat new_features_gpu;
-    detector_ptr->detect(curr_img_gpu, new_features_gpu, mask_gpu);
-
-    // Download the detected keypoints
     vector<KeyPoint> new_features(0);
-    detector_ptr->convert(new_features_gpu, new_features);
+    detector_ptr->detect(curr_img_gpu, new_features, mask);
     ROS_INFO("Detect new features time(GPU): %f", (ros::Time::now() - start_time).toSec());
 #endif
 

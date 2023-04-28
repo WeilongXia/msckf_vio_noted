@@ -352,9 +352,9 @@ class ImageProcessor
     std::vector<cv::Mat> curr_cam1_pyramid_;
 #else
     // Gpu version
-    std::vector<cv::cuda::GpuMat> prev_cam0_pyramid_gpu_;
-    std::vector<cv::cuda::GpuMat> curr_cam0_pyramid_gpu_;
-    std::vector<cv::cuda::GpuMat> curr_cam1_pyramid_gpu_;
+//     std::vector<cv::cuda::GpuMat> prev_cam0_pyramid_gpu_;
+//     std::vector<cv::cuda::GpuMat> curr_cam0_pyramid_gpu_;
+//     std::vector<cv::cuda::GpuMat> curr_cam1_pyramid_gpu_;
 #endif
 
     // Features in the previous and current image.
