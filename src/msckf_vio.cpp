@@ -115,6 +115,16 @@ bool MsckfVio::loadParameters()
     nh.param<bool>("if_fuse_mocap", if_fuse_mocap, false);
     nh.param<bool>("if_use_d435i", if_use_d435i, false);
     nh.param<bool>("if_use_lab_mocap", if_use_lab_mocap, false);
+    nh.param<bool>("test_lack_mocap", test_lack_mocap, false);
+
+    nh.param<double>("first_stamp", first_stamp, 0.0);
+    nh.param<double>("second_stamp", second_stamp, 0.0);
+    nh.param<double>("third_stamp", third_stamp, 0.0);
+    nh.param<double>("fourth_stamp", fourth_stamp, 0.0);
+    nh.param<double>("fifth_stamp", fifth_stamp, 0.0);
+    nh.param<double>("sixth_stamp", sixth_stamp, 0.0);
+
+    nh.param<double>("correction_factor", correction_factor, 0.0);
 
     state_server.state_cov = MatrixXd::Zero(21, 21);
     for (int i = 3; i < 6; ++i)
@@ -429,6 +439,20 @@ void MsckfVio::featureCallback(const CameraMeasurementConstPtr &msg)
 void MsckfVio::mocapPoseCallback(const geometry_msgs::PoseStampedConstPtr &msg)
 {
     static bool first_mocap_pose_msg = true;
+
+    if (test_lack_mocap)
+    {
+        static double init_time = ros::Time::now().toSec();
+        double curr_time = ros::Time::now().toSec();
+        double duration = curr_time - init_time;
+        if ((first_stamp <= duration && duration <= second_stamp) || //
+            (third_stamp <= duration && duration <= fourth_stamp) || //
+            (fifth_stamp <= duration && duration <= sixth_stamp))
+        {
+            return;
+        }
+    }
+
     if (if_use_lab_mocap)
     {
         static int reduce_freq_cnt = 0;
@@ -537,7 +561,7 @@ void MsckfVio::mocapPoseCallback(const geometry_msgs::PoseStampedConstPtr &msg)
         tf::transformEigenToTF(T_b_w_gt_pub, T_b_w_gt_tf);
         tf_pub.sendTransform(
             tf::StampedTransform(T_b_w_gt_tf, msg->header.stamp, fixed_frame_id, child_frame_id + "_mocap"));
-    
+
         // Visulize mocap path
         geometry_msgs::PoseStamped mocap_pose_msg_pub;
         mocap_pose_msg_pub.header.stamp = ros::Time::now();
@@ -718,22 +742,41 @@ void MsckfVio::processMocapData(const geometry_msgs::PoseStamped &msg)
 
     m_mocap_update.lock();
 
-    // Update the IMU state.
-    const VectorXd delta_x_imu = delta_x.head<21>();
-    // std::cout << "delta_x_imu: " << delta_x_imu.transpose() << std::endl;
+    static int step = 1;
 
-    if (delta_x_imu.segment<3>(0).norm() > 0.15)
+    if (delta_x.segment<3>(0).norm() > 0.1 || delta_x.segment<3>(12).norm() > 0.1)
     {
-        printf("delta orientation: %f\n", delta_x_imu.segment<3>(0).norm());
-        // printf("delta position: %f\n", delta_x_imu.segment<3>(12).norm());
+        printf("delta orientation: %f\n", delta_x.segment<3>(0).norm());
+        printf("delta position: %f\n", delta_x.segment<3>(12).norm());
         ROS_WARN("Mocap update change is too large.");
         std::cout << "q_err: " << q_err.transpose() << std::endl;
         std::cout << "q_mocap: " << q_mocap.transpose() << std::endl;
         std::cout << "state_q: " << state_server.imu_state.orientation.transpose() << std::endl;
+        std::cout << "delta_x: " << delta_x.transpose() << std::endl;
+        // Eigen::VectorXd delta_x_rot = delta_x.segment<3>(0);
+        // Eigen::VectorXd delta_x_pos = correction_factor * delta_x.segment<3>(12);
+        // delta_x = Eigen::VectorXd::Zero(delta_x.size());
+        // delta_x.segment<3>(0) = delta_x_rot;
+        // delta_x.segment<3>(12) = delta_x_pos;
+        // delta_x_imu.segment<3>(0) = correction_factor * delta_x_imu.segment<3>(0);
+        // delta_x_imu.segment<3>(12) = correction_factor * delta_x_imu.segment<3>(12);
+        // delta_x_imu = correction_factor * delta_x_imu;
+        for (; step <= (int)1 / correction_factor; ++step)
+        {
+            delta_x = step * correction_factor * delta_x;
+        }
         // return;
         // m_mocap_update.unlock();
         // return;
     }
+    else
+    {
+        step = 1;
+    }
+
+    // Update the IMU state.
+    const VectorXd delta_x_imu = delta_x.head<21>();
+    // std::cout << "delta_x_imu: " << delta_x_imu.transpose() << std::endl;
 
     // const Vector4d dq_imu = smallAngleQuaternion(delta_x_imu.head<3>());
     // state_server.imu_state.orientation = quaternionMultiplication(dq_imu, state_server.imu_state.orientation);

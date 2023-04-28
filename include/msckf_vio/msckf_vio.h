@@ -255,6 +255,11 @@ class MsckfVio
     double mocap_pos_noise;
     double mocap_rot_noise;
 
+    // Test lack of motion capture
+    bool test_lack_mocap;
+    double first_stamp, second_stamp, third_stamp, fourth_stamp, fifth_stamp, sixth_stamp;
+    double correction_factor;
+
     std::string msckf_result_path;
     std::string mocap_result_path;
 };
