@@ -29,7 +29,7 @@
       <remap from="~cam0_image" to="/camera/infra1/image_rect_raw"/>
       <remap from="~cam1_image" to="/camera/infra2/image_rect_raw"/>
 
-      <!-- do not use gpu currently -->
+      <!-- Use macro definition -->
       <param name="use_gpu" value="false"/>
       <param name="if_debug_image" value="false"/>
 

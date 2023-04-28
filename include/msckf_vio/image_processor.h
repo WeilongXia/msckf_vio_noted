@@ -22,9 +22,13 @@
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/Imu.h>
 
-// #include <opencv2/cudaarithm.hpp>
-// #include <opencv2/cudaimgproc.hpp>
-// #include <opencv2/cudaoptflow.hpp>
+// #define USE_GPU
+
+#ifdef USE_GPU
+#include <opencv2/core/cuda.hpp>
+#include <opencv2/cudafeatures2d.hpp>
+#include <opencv2/cudaimgproc.hpp>
+#endif
 
 namespace msckf_vio
 {
@@ -309,8 +313,11 @@ class ImageProcessor
 
     // Feature detector
     ProcessorConfig processor_config;
+#ifndef USE_GPU
     cv::Ptr<cv::Feature2D> detector_ptr;
-    // cv::Ptr<cv::cuda::CornersDetector> gpu_detector_ptr;
+#else
+    cv::Ptr<cv::cuda::FastFeatureDetector> detector_ptr;
+#endif
 
     // IMU message buffer.
     std::vector<sensor_msgs::Imu> imu_msg_buffer;
@@ -338,13 +345,17 @@ class ImageProcessor
     cv_bridge::CvImageConstPtr cam0_curr_img_ptr;
     cv_bridge::CvImageConstPtr cam1_curr_img_ptr;
 
+#ifndef USE_GPU
     // Pyramids for previous and current image
     std::vector<cv::Mat> prev_cam0_pyramid_;
     std::vector<cv::Mat> curr_cam0_pyramid_;
     std::vector<cv::Mat> curr_cam1_pyramid_;
+#else
     // Gpu version
-    // std::vector<cv::cuda::GpuMat> curr_cam0_pyramid_gpu_;
-    // std::vector<cv::cuda::GpuMat> curr_cam1_pyramid_gpu_;
+    std::vector<cv::cuda::GpuMat> prev_cam0_pyramid_gpu_;
+    std::vector<cv::cuda::GpuMat> curr_cam0_pyramid_gpu_;
+    std::vector<cv::cuda::GpuMat> curr_cam1_pyramid_gpu_;
+#endif
 
     // Features in the previous and current image.
     boost::shared_ptr<GridFeatures> prev_features_ptr;
@@ -374,7 +385,7 @@ class ImageProcessor
     void featureLifetimeStatistics();
 
     // If use cuda to accelerate front-end
-    bool use_gpu;
+    // bool use_gpu;
 
     // If draw features on the image for debugging
     bool if_debug_image;

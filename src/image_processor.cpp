@@ -110,7 +110,7 @@ bool ImageProcessor::loadParameters()
     nh.param<double>("ransac_threshold", processor_config.ransac_threshold, 3);
     nh.param<double>("stereo_threshold", processor_config.stereo_threshold, 3);
 
-    nh.param<bool>("use_gpu", use_gpu, false);
+    // nh.param<bool>("use_gpu", use_gpu, false);
     nh.param<bool>("if_debug_image", if_debug_image, false);
 
     ROS_INFO("===========================================");
@@ -170,7 +170,11 @@ bool ImageProcessor::initialize()
     ROS_INFO("Finish loading ROS parameters...");
 
     // Create feature detector.
+#ifndef USE_GPU
     detector_ptr = FastFeatureDetector::create(processor_config.fast_threshold);
+#else
+    detector_ptr = cv::cuda::FastFeatureDetector::create(processor_config.fast_threshold);
+#endif
 
     if (!createRosIO())
         return false;
@@ -190,15 +194,16 @@ void ImageProcessor::stereoCallback(const sensor_msgs::ImageConstPtr &cam0_img,
     cam1_curr_img_ptr = cv_bridge::toCvShare(cam1_img, sensor_msgs::image_encodings::MONO8);
 
     // Build the image pyramids once since they're used at multiple places
+    ros::Time start_time = ros::Time::now();
     createImagePyramids();
+    ROS_INFO("Create pyramids time: %f", (ros::Time::now() - start_time).toSec());
 
     // Detect features in the first frame.
     if (is_first_img)
     {
         ros::Time start_time = ros::Time::now();
         initializeFirstFrame();
-        // ROS_INFO("Detection time: %f",
-        //    (ros::Time::now()-start_time).toSec());
+        // ROS_INFO("Detection time: %f", (ros::Time::now() - start_time).toSec());
         is_first_img = false;
 
         // Draw results.
@@ -215,20 +220,17 @@ void ImageProcessor::stereoCallback(const sensor_msgs::ImageConstPtr &cam0_img,
         // Track the feature in the previous image.
         ros::Time start_time = ros::Time::now();
         trackFeatures();
-        // ROS_INFO("Tracking time: %f",
-        //    (ros::Time::now()-start_time).toSec());
+        ROS_INFO("Tracking time: %f", (ros::Time::now() - start_time).toSec());
 
         // Add new features into the current image.
         start_time = ros::Time::now();
         addNewFeatures();
-        // ROS_INFO("Addition time: %f",
-        //    (ros::Time::now()-start_time).toSec());
+        ROS_INFO("Addition time: %f", (ros::Time::now() - start_time).toSec());
 
         // Add new features into the current image.
         start_time = ros::Time::now();
         pruneGridFeatures();
-        // ROS_INFO("Prune grid features: %f",
-        //    (ros::Time::now()-start_time).toSec());
+        // ROS_INFO("Prune grid features: %f", (ros::Time::now() - start_time).toSec());
 
         // Draw results.
         start_time = ros::Time::now();
@@ -247,15 +249,18 @@ void ImageProcessor::stereoCallback(const sensor_msgs::ImageConstPtr &cam0_img,
     //    (ros::Time::now()-start_time).toSec());
 
     // Publish features in the current image.
-    ros::Time start_time = ros::Time::now();
+    start_time = ros::Time::now();
     publish();
-    // ROS_INFO("Publishing: %f",
-    //    (ros::Time::now()-start_time).toSec());
+    // ROS_INFO("Publishing: %f", (ros::Time::now() - start_time).toSec());
 
     // Update the previous image and previous features.
     cam0_prev_img_ptr = cam0_curr_img_ptr;
     prev_features_ptr = curr_features_ptr;
+#ifndef USE_GPU
     std::swap(prev_cam0_pyramid_, curr_cam0_pyramid_);
+#else
+    std::swap(prev_cam0_pyramid_gpu_, curr_cam0_pyramid_gpu_);
+#endif
 
     // Initialize the current features to empty vectors.
     curr_features_ptr.reset(new GridFeatures());
@@ -278,24 +283,7 @@ void ImageProcessor::imuCallback(const sensor_msgs::ImuConstPtr &msg)
 
 void ImageProcessor::createImagePyramids()
 {
-    // if (use_gpu)
-    // {
-    //     const Mat &curr_cam0_img = cam0_curr_img_ptr->image;
-    //     cuda::GpuMat curr_cam0_img_gpu(curr_cam0_img);
-    //     cuda::buildOpticalFlowPyramid(
-    //         curr_cam0_img_gpu, curr_cam0_pyramid_gpu_, Size(processor_config.patch_size,
-    //         processor_config.patch_size), processor_config.pyramid_levels, true, BORDER_REFLECT_101, BORDER_CONSTANT,
-    //         false);
-
-    //     const Mat &curr_cam1_img = cam1_curr_img_ptr->image;
-    //     cuda::GpuMat curr_cam1_img_gpu(curr_cam1_img);
-    //     cuda::buildOpticalFlowPyramid(
-    //         curr_cam1_img_gpu, curr_cam1_pyramid_gpu_, Size(processor_config.patch_size,
-    //         processor_config.patch_size), processor_config.pyramid_levels, true, BORDER_REFLECT_101, BORDER_CONSTANT,
-    //         false);
-    // }
-    // else
-    // {
+#ifndef USE_GPU
     const Mat &curr_cam0_img = cam0_curr_img_ptr->image;
     buildOpticalFlowPyramid(curr_cam0_img, curr_cam0_pyramid_,
                             Size(processor_config.patch_size, processor_config.patch_size),
@@ -305,30 +293,47 @@ void ImageProcessor::createImagePyramids()
     buildOpticalFlowPyramid(curr_cam1_img, curr_cam1_pyramid_,
                             Size(processor_config.patch_size, processor_config.patch_size),
                             processor_config.pyramid_levels, true, BORDER_REFLECT_101, BORDER_CONSTANT, false);
-    // }
+#else
+    const Mat &curr_cam0_img = cam0_curr_img_ptr->image;
+    // Upload the image to GPU memory
+    cuda::GpuMat curr_cam0_img_gpu(curr_cam0_img);
+    // Build the pyramid on GPU
+    cuda::buildOpticalFlowPyramid(curr_cam0_img_gpu, curr_cam0_pyramid_gpu_,
+                                  Size(processor_config.patch_size, processor_config.patch_size),
+                                  processor_config.pyramid_levels, true, BORDER_REFLECT_101, BORDER_CONSTANT, false);
+
+    const Mat &curr_cam1_img = cam1_curr_img_ptr->image;
+    cuda::GpuMat curr_cam1_img_gpu(curr_cam1_img);
+    cuda::buildOpticalFlowPyramid(curr_cam1_img_gpu, curr_cam1_pyramid_gpu_,
+                                  Size(processor_config.patch_size, processor_config.patch_size),
+                                  processor_config.pyramid_levels, true, BORDER_REFLECT_101, BORDER_CONSTANT, false);
+#endif
 }
 
 void ImageProcessor::initializeFirstFrame()
 {
     const Mat &img = cam0_curr_img_ptr->image;
-    // if (use_gpu)
-    // {
-    //     cv::cuda::GpuMat gpu_img(cam0_curr_img_ptr->image);
-    //     gpu_detector_ptr = cv::cuda::createGoodFeaturesToTrackDetector(
-    //         gpu_img.type(),
-    //         processor_config.grid_row * processor_config.grid_col * processor_config.grid_min_feature_num, 0.01);
-    // }
-    // else
-    // {
-    // }
+
+#ifndef USE_GPU
+    // Detect new features on the frist image.
+    vector<KeyPoint> new_features(0);
+    detector_ptr->detect(img, new_features);
+#else
+    // Upload the input image to the GPU
+    const cv::cuda::GpuMat img_gpu(img);
+
+    // Detect features using the CUDA FAST detector
+    cv::cuda::GpuMat new_features_gpu;
+    detector_ptr->detect(img_gpu, new_features_gpu);
+
+    // Download the detected keypoints
+    vector<KeyPoint> new_features(0);
+    detector_ptr->convert(new_features_gpu, new_features);
+#endif
 
     // Size of each grid.
     static int grid_height = img.rows / processor_config.grid_row;
     static int grid_width = img.cols / processor_config.grid_col;
-
-    // Detect new features on the frist image.
-    vector<KeyPoint> new_features(0);
-    detector_ptr->detect(img, new_features);
 
     // Find the stereo matched points for the newly
     // detected features.
@@ -465,12 +470,36 @@ void ImageProcessor::trackFeatures()
 
     predictFeatureTracking(prev_cam0_points, cam0_R_p_c, cam0_intrinsics, curr_cam0_points);
 
+#ifndef USE_GPU
+    ros::Time start_time = ros::Time::now();
     calcOpticalFlowPyrLK(prev_cam0_pyramid_, curr_cam0_pyramid_, prev_cam0_points, curr_cam0_points, track_inliers,
                          noArray(), Size(processor_config.patch_size, processor_config.patch_size),
                          processor_config.pyramid_levels,
                          TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, processor_config.max_iteration,
                                       processor_config.track_precision),
                          cv::OPTFLOW_USE_INITIAL_FLOW);
+    ROS_INFO("trackFeature calcOpticalFlow time(CPU) : % f ", (ros::Time::now() - start_time).toSec());
+#else
+    ros::Time start_time = ros::Time::now();
+    // Create a CUDA-based sparse optical flow calculator
+    cv::Ptr<cv::cuda::SparsePyrLKOpticalFlow> pyrLK_gpu = cv::cuda::SparsePyrLKOpticalFlow::create(
+        Size(processor_config.patch_size, processor_config.patch_size), processor_config.pyramid_levels,
+        processor_config.max_iteration, processor_config.track_precision);
+
+    // Upload detected keypoints to the GPU
+    cv::cuda::GpuMat prev_cam0_points_gpu, curr_cam0_points_gpu, track_inliers_gpu;
+    prev_cam0_points_gpu.upload(Mat(prev_cam0_points).reshape(1, static_cast<int>(prev_cam0_points.size())));
+    curr_cam0_points_gpu.upload(Mat(curr_cam0_points).reshape(1, static_cast<int>(curr_cam0_points.size())));
+
+    // Calculate optical flow on the GPU
+    pyrLK_gpu->calc(prev_cam0_pyramid_gpu_, curr_cam0_pyramid_gpu_, prev_cam0_points_gpu, curr_cam0_points_gpu,
+                    track_inliers_gpu);
+
+    // Download the results from the GPU
+    curr_cam0_points_gpu.download(Mat(curr_cam0_points).reshape(1, static_cast<int>(curr_cam0_points.size())));
+    track_inliers_gpu.download(Mat(track_inliers).reshape(1, static_cast<int>(track_inliers_gpu.size())));
+    ROS_INFO("trackFeature calcOpticalFlow time(GPU) : % f ", (ros::Time::now() - start_time).toSec());
+#endif
 
     // Mark those tracked points out of the image region
     // as untracked.
@@ -613,12 +642,36 @@ void ImageProcessor::stereoMatch(const vector<cv::Point2f> &cam0_points, vector<
     }
 
     // Track features using LK optical flow method.
+#ifndef USE_GPU
+    ros::Time start_time = ros::Time::now();
     calcOpticalFlowPyrLK(curr_cam0_pyramid_, curr_cam1_pyramid_, cam0_points, cam1_points, inlier_markers, noArray(),
                          Size(processor_config.patch_size, processor_config.patch_size),
                          processor_config.pyramid_levels,
                          TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, processor_config.max_iteration,
                                       processor_config.track_precision),
                          cv::OPTFLOW_USE_INITIAL_FLOW);
+    ROS_INFO("stereoMatch calcOpticalFlow time(CPU): %f", (ros::Time::now() - start_time).toSec());
+#else
+    ros::Time start_time = ros::Time::now();
+    // Create a CUDA-based sparse optical flow calculator
+    cv::Ptr<cv::cuda::SparsePyrLKOpticalFlow> pyrLK_gpu = cv::cuda::SparsePyrLKOpticalFlow::create(
+        Size(processor_config.patch_size, processor_config.patch_size), processor_config.pyramid_levels,
+        processor_config.max_iteration, processor_config.track_precision);
+
+    // Upload detected keypoints to the GPU
+    cv::cuda::GpuMat cam0_points_gpu, cam1_points_gpu, inlier_markers_gpu;
+    cam0_points_gpu.upload(Mat(cam0_points).reshape(1, static_cast<int>(cam0_points.size())));
+    cam1_points_gpu.upload(Mat(cam1_points).reshape(1, static_cast<int>(cam1_points.size())));
+
+    // Calculate optical flow on the GPU
+    pyrLK_gpu->calc(curr_cam0_pyramid_, curr_cam1_pyramid_, cam0_points_gpu, cam1_points_gpu, inlier_markers_gpu);
+
+    // Download the results from the GPU
+    cam1_points_gpu.download(Mat(cam1_points).reshape(1, static_cast<int>(cam1_points.size())));
+    inlier_markers_gpu.download(Mat(inlier_markers).reshape(1, static_cast<int>(inlier_markers_gpu.size())));
+
+    ROS_INFO("stereoMatch calcOpticalFlow time(GPU): %f", (ros::Time::now() - start_time).toSec());
+#endif
 
     // Mark those tracked points out of the image region
     // as untracked.
@@ -671,10 +724,6 @@ void ImageProcessor::addNewFeatures()
 {
     const Mat &curr_img = cam0_curr_img_ptr->image;
 
-    // Size of each grid.
-    static int grid_height = cam0_curr_img_ptr->image.rows / processor_config.grid_row;
-    static int grid_width = cam0_curr_img_ptr->image.cols / processor_config.grid_col;
-
     // Create a mask to avoid redetecting existing features.
     Mat mask(curr_img.rows, curr_img.cols, CV_8U, Scalar(1));
 
@@ -701,9 +750,31 @@ void ImageProcessor::addNewFeatures()
         }
     }
 
+#ifndef USE_GPU
     // Detect new features.
+    ros::Time start_time = ros::Time::now();
     vector<KeyPoint> new_features(0);
     detector_ptr->detect(curr_img, new_features, mask);
+    ROS_INFO("Detect new features time(CPU): %f", (ros::Time::now() - start_time).toSec());
+#else
+    ros::Time start_time = ros::Time::now();
+    // Upload the input image and mask to the GPU
+    cv::cuda::GpuMat curr_img_gpu(curr_img);
+    cv::cuda::GpuMat mask_gpu(mask);
+
+    // Detect features using the CUDA FAST detector
+    cv::cuda::GpuMat new_features_gpu;
+    detector_ptr->detect(curr_img_gpu, new_features_gpu, mask_gpu);
+
+    // Download the detected keypoints
+    vector<KeyPoint> new_features(0);
+    detector_ptr->convert(new_features_gpu, new_features);
+    ROS_INFO("Detect new features time(GPU): %f", (ros::Time::now() - start_time).toSec());
+#endif
+
+    // Size of each grid.
+    static int grid_height = cam0_curr_img_ptr->image.rows / processor_config.grid_row;
+    static int grid_width = cam0_curr_img_ptr->image.cols / processor_config.grid_col;
 
     // Collect the new detected features based on the grid.
     // Select the ones with top response within each grid afterwards.
